@@ -202,6 +202,12 @@
         }
       }
     },
+    " Shleemies" : {
+
+    },
+    ".|." : {
+
+    },
     "'Now Playing' was the only option on previous versions and works with all media apps." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3909,6 +3915,9 @@
           }
         }
       }
+    },
+    "C-137" : {
+
     },
     "Calendar" : {
       "localizations" : {
@@ -11625,6 +11634,9 @@
           }
         }
       }
+    },
+    "I " : {
+
     },
     "In progress" : {
       "localizations" : {

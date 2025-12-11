@@ -734,7 +734,12 @@ struct About: View {
                     HStack {
                         Text("Release name")
                         Spacer()
-                        Text(Defaults[.releaseName])
+                        Text("I ")
+                            .foregroundStyle(.secondary)
+                        + Text(".|.")
+                            .foregroundStyle(.secondary)
+                            .bold()
+                        + Text(" Shleemies")
                             .foregroundStyle(.secondary)
                     }
                     HStack {
@@ -744,7 +749,7 @@ struct About: View {
                             Text("(\(Bundle.main.buildVersionNumber ?? ""))")
                                 .foregroundStyle(.secondary)
                         }
-                        Text(Bundle.main.releaseVersionNumber ?? "unkown")
+                        Text("C-137")
                             .foregroundStyle(.secondary)
                     }
                     .onTapGesture {
@@ -759,7 +764,7 @@ struct About: View {
                 HStack(spacing: 30) {
                     Spacer(minLength: 0)
                     Button {
-                        if let url = URL(string: "https://github.com/TheBoredTeam/boring.notch") {
+                        if let url = URL(string: "https://github.com/probe2k/boring.notch") {
                             NSWorkspace.shared.open(url)
                         }
                     } label: {
