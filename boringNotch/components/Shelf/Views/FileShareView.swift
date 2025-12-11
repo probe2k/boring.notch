@@ -54,7 +54,7 @@ struct FileShareView: View {
                             style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [10])
                         )
                 )
-                .shadow(color: Color.black.opacity(0.6), radius: 6, x: 0, y: 2)
+                .shadow(color: Color.black.opacity(0.6), radius: 4, x: 0, y: 2)  // Reduced from 6
 
             // Content
             VStack(spacing: 5) {

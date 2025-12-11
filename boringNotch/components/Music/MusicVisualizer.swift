@@ -56,7 +56,7 @@ class AudioSpectrum: NSView {
     
     private func startAnimating() {
         guard animationTimer == nil else { return }
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
+        animationTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.updateBars()
         }
     }
@@ -80,7 +80,7 @@ class AudioSpectrum: NSView {
             animation.fillMode = .forwards
             animation.isRemovedOnCompletion = false
             if #available(macOS 13.0, *) {
-                animation.preferredFrameRateRange = CAFrameRateRange(minimum: 24, maximum: 24, preferred: 24)
+                animation.preferredFrameRateRange = CAFrameRateRange(minimum: 15, maximum: 15, preferred: 15)
             }
             barLayer.add(animation, forKey: "scaleY")
         }

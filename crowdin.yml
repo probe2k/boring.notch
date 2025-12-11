@@ -1,4 +1,6 @@
 files:
-  - source: /boringNotch/Localizable.xcstrings
-    translation: /boringNotch/Localizable.xcstrings
+  - source: /boringNotch/*.xcstrings
+    translation: /boringNotch/%original_file_name%
     multilingual: 1
+bundles:
+  - 5

@@ -202,6 +202,7 @@
       }
     },
     "'Now Playing' was the only option on previous versions and works with all media apps." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -2903,6 +2904,7 @@
       }
     },
     "Automatically check for updates" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -3003,6 +3005,7 @@
       }
     },
     "Automatically download updates" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -4603,6 +4606,7 @@
       }
     },
     "Check for Updates…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -4703,6 +4707,7 @@
       }
     },
     "Choose a Music Source" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -5103,6 +5108,7 @@
       }
     },
     "Circle" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -5903,6 +5909,7 @@
       }
     },
     "Continue" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -11309,6 +11316,7 @@
       }
     },
     "https://github.com/pear-devs/pear-desktop" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -13410,6 +13418,7 @@
       }
     },
     "Media Source" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -13810,6 +13819,7 @@
       }
     },
     "Mirror shape" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -14010,6 +14020,7 @@
       }
     },
     "Music Source" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -18113,6 +18124,7 @@
       }
     },
     "Select the music source you want to use. You can change this later in the app settings." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -19213,6 +19225,7 @@
       }
     },
     "Show lyrics below artist name" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -20513,6 +20526,7 @@
       }
     },
     "Software updates" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -20713,6 +20727,7 @@
       }
     },
     "Square" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -22716,6 +22731,7 @@
       }
     },
     "View on GitHub: pear-devs/pear-desktop" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -23516,6 +23532,7 @@
       }
     },
     "YouTube Music requires this third-party app to be installed: " : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {

@@ -14,7 +14,6 @@ enum OnboardingStep {
     case calendarPermission
     case remindersPermission
     case accessibilityPermission
-    case musicPermission
     case finished
 }
 
@@ -112,21 +111,12 @@ struct OnboardingView: View {
                         Task {
                             await requestAccessibilityPermission()
                             withAnimation(.easeInOut(duration: 0.6)) {
-                                step = .musicPermission
+                                BoringViewCoordinator.shared.firstLaunch = false
+                                step = .finished
                             }
                         }
                     },
                     onSkip: {
-                        withAnimation(.easeInOut(duration: 0.6)) {
-                            step = .musicPermission
-                        }
-                    }
-                )
-                .transition(.opacity)
-                
-            case .musicPermission:
-                MusicControllerSelectionView(
-                    onContinue: {
                         withAnimation(.easeInOut(duration: 0.6)) {
                             BoringViewCoordinator.shared.firstLaunch = false
                             step = .finished
@@ -134,6 +124,7 @@ struct OnboardingView: View {
                     }
                 )
                 .transition(.opacity)
+                
 
             case .finished:
                 OnboardingFinishView(onFinish: onFinish, onOpenSettings: onOpenSettings)

@@ -30,13 +30,13 @@ class SparkleNSView: NSView {
         let cell = CAEmitterCell()
         cell.contents = NSImage(named: "sparkle")?.cgImage(forProposedRect: nil, context: nil, hints: nil)
         cell.birthRate = 50
-        cell.lifetime = 5
+        cell.lifetime = 3  // Reduced from 5
         cell.velocity = 10
         cell.velocityRange = 5
         cell.emissionRange = .pi * 2
         cell.scale = 0.2
         cell.scaleRange = 0.1
-        cell.alphaSpeed = -0.5
+        cell.alphaSpeed = -0.7  // Faster fade from -0.5
         cell.yAcceleration = 10 // Add a slight downward motion
         
         emitterLayer.emitterCells = [cell]
@@ -57,7 +57,7 @@ class SparkleNSView: NSView {
         // Adjust birth rate based on view size
         let area = bounds.width * bounds.height
         let baseBirthRate: Float = 50
-        let adjustedBirthRate = 20 // Assuming 200x200 as base size
+        let adjustedBirthRate = 10 // Reduced from 20
         emitterLayer.emitterCells?.first?.birthRate = Float(adjustedBirthRate)
     }
     

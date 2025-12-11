@@ -127,7 +127,7 @@ struct DraggableProgressBar: View {
                                 Color.effectiveAccent.ensureMinimumBrightness(factor: 0.7) :
                                 Color.white) :
                             Color.clear,
-                            radius: 8, x: 3)
+                            radius: 5, x: 2)  // Reduced from radius: 8, x: 3
                         .opacity(value.isZero ? 0 : 1)
                 }
                 .gesture(
