@@ -16,7 +16,6 @@ import SwiftUIIntrospect
 @MainActor
 struct ContentView: View {
     @EnvironmentObject var vm: BoringViewModel
-    @ObservedObject var webcamManager = WebcamManager.shared
 
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     @ObservedObject var musicManager = MusicManager.shared
@@ -517,9 +516,10 @@ struct ContentView: View {
                 isHovering = true
             }
             
-            if vm.notchState == .closed && Defaults[.enableHaptics] {
-                haptics.toggle()
-            }
+            // Haptic feedback disabled
+            // if vm.notchState == .closed && Defaults[.enableHaptics] {
+            //     haptics.toggle()
+            // }
             
             guard vm.notchState == .closed,
                   !coordinator.sneakPeek.show,
@@ -570,9 +570,10 @@ struct ContentView: View {
         }
 
         if translation > Defaults[.gestureSensitivity] {
-            if Defaults[.enableHaptics] {
-                haptics.toggle()
-            }
+            // Haptic feedback disabled
+            // if Defaults[.enableHaptics] {
+            //     haptics.toggle()
+            // }
             withAnimation(animationSpring) {
                 gestureProgress = .zero
             }
@@ -602,9 +603,10 @@ struct ContentView: View {
                 vm.close()
             }
 
-            if Defaults[.enableHaptics] {
-                haptics.toggle()
-            }
+            // Haptic feedback disabled
+            // if Defaults[.enableHaptics] {
+            //     haptics.toggle()
+            // }
         }
     }
 }

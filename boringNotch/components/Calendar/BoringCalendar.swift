@@ -47,9 +47,10 @@ struct WheelPicker: View {
                             withAnimation {
                                 scrollPosition = index
                             }
-                            if Defaults[.enableHaptics] {
-                                haptics.toggle()
-                            }
+                            // Haptic feedback disabled
+                            // if Defaults[.enableHaptics] {
+                            //     haptics.toggle()
+                            // }
                         }
                     }
                 }
@@ -132,9 +133,10 @@ struct WheelPicker: View {
         let date = dateForItemIndex(index: newIndex, spacerNum: spacerNum)
         if !Calendar.current.isDate(date, inSameDayAs: selectedDate) {
             selectedDate = date
-            if Defaults[.enableHaptics] {
-                haptics.toggle()
-            }
+            // Haptic feedback disabled
+            // if Defaults[.enableHaptics] {
+            //     haptics.toggle()
+            // }
         }
     }
 
@@ -273,11 +275,6 @@ struct EventListView: View {
 
     static func filteredEvents(events: [EventModel]) -> [EventModel] {
         events.filter { event in
-            if event.type.isReminder {
-                if case .reminder(let completed) = event.type {
-                    return !completed || !Defaults[.hideCompletedReminders]
-                }
-            }
             // Filter out all-day events if setting is enabled
             if event.isAllDay && Defaults[.hideAllDayEvents] {
                 return false
@@ -341,134 +338,51 @@ struct EventListView: View {
         Spacer(minLength: 0)
     }
 
+    @ViewBuilder
     private func eventRow(_ event: EventModel) -> some View {
-        if event.type.isReminder {
-            let isCompleted: Bool
-            if case .reminder(let completed) = event.type {
-                isCompleted = completed
-            } else {
-                isCompleted = false
-            }
-            return AnyView(
-                HStack(spacing: 8) {
-                    ReminderToggle(
-                        isOn: Binding(
-                            get: { isCompleted },
-                            set: { newValue in
-                                Task {
-                                    await calendarManager.setReminderCompleted(
-                                        reminderID: event.id, completed: newValue
-                                    )
-                                }
-                            }
-                        ),
-                        color: Color(event.calendar.color)
-                    )
-                    .opacity(1.0)  // Ensure the toggle is always fully opaque
-                    HStack {
-                        Text(event.title)
-                            .font(.callout)
-                            .foregroundColor(.white)
-                            .lineLimit(showFullEventTitles ? nil : 1)
-                        Spacer(minLength: 0)
-                        VStack(alignment: .trailing, spacing: 4) {
-                            if event.isAllDay {
-                                Text("All-day")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
-                            } else {
-                                Text(event.start, style: .time)
-                                    .foregroundColor(.white)
-                                    .font(.caption)
-                            }
-                        }
-                    }
-                    .opacity(
-                        isCompleted
-                            ? 0.4
-                            : event.start < Date.now && Calendar.current.isDateInToday(event.start)
-                                ? 0.6 : 1.0
-                    )
-                }
-                .padding(.vertical, 4)
-            )
-        } else {
-            return AnyView(
-                HStack(alignment: .top, spacing: 4) {
-                    Rectangle()
-                        .fill(Color(event.calendar.color))
-                        .frame(width: 3)
-                        .cornerRadius(1.5)
+        AnyView(
+            HStack(alignment: .top, spacing: 4) {
+                Rectangle()
+                    .fill(Color(event.calendar.color))
+                    .frame(width: 3)
+                    .cornerRadius(1.5)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(event.title)
-                            .font(.callout)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(event.title)
+                        .font(.callout)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .lineLimit(showFullEventTitles ? nil : 2)
+
+                    if let location = event.location, !location.isEmpty {
+                        Text(location)
+                            .font(.caption)
+                            .foregroundColor(Color(white: 0.65))
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+                VStack(alignment: .trailing, spacing: 4) {
+                    if event.isAllDay {
+                        Text("All-day")
+                            .font(.caption)
                             .fontWeight(.medium)
                             .foregroundColor(.white)
-                            .lineLimit(showFullEventTitles ? nil : 2)
-
-                        if let location = event.location, !location.isEmpty {
-                            Text(location)
-                                .font(.caption)
-                                .foregroundColor(Color(white: 0.65))
-                                .lineLimit(1)
-                        }
+                            .lineLimit(1)
+                    } else {
+                        Text(event.start, style: .time)
+                            .foregroundColor(.white)
+                        Text(event.end, style: .time)
+                            .foregroundColor(Color(white: 0.65))
                     }
-                    Spacer(minLength: 0)
-                    VStack(alignment: .trailing, spacing: 4) {
-                        if event.isAllDay {
-                            Text("All-day")
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                        } else {
-                            Text(event.start, style: .time)
-                                .foregroundColor(.white)
-                            Text(event.end, style: .time)
-                                .foregroundColor(Color(white: 0.65))
-                        }
-                    }
-                    .font(.caption)
-                    .frame(minWidth: 44, alignment: .trailing)
                 }
-                .opacity(
-                    event.eventStatus == .ended && Calendar.current.isDateInToday(event.start)
-                        ? 0.6 : 1.0)
-            )
-        }
-    }
-}
-
-struct ReminderToggle: View {
-    @Binding var isOn: Bool
-    var color: Color
-
-    var body: some View {
-        Button(action: {
-            isOn.toggle()
-        }) {
-            ZStack {
-                // Outer ring
-                Circle()
-                    .strokeBorder(color, lineWidth: 2)
-                    .frame(width: 14, height: 14)
-                // Inner fill
-                if isOn {
-                    Circle()
-                        .fill(color)
-                        .frame(width: 8, height: 8)
-                }
-                Circle()
-                    .fill(Color.black.opacity(0.001))
-                    .frame(width: 14, height: 14)
+                .font(.caption)
+                .frame(minWidth: 44, alignment: .trailing)
             }
-        }
-        .buttonStyle(PlainButtonStyle())
-        .padding(0)
-        .accessibilityLabel(isOn ? "Mark as incomplete" : "Mark as complete")
+            .opacity(
+                event.eventStatus == .ended && Calendar.current.isDateInToday(event.start)
+                    ? 0.6 : 1.0)
+        )
     }
 }
 
