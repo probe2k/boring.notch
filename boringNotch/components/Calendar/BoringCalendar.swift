@@ -185,6 +185,22 @@ struct CalendarView: View {
     @State private var selectedDate = Date()
 
     var body: some View {
+        if let calendarManager = CalendarManager.shared {
+            ObservableCalendarView(calendarManager: calendarManager, selectedDate: $selectedDate)
+                .environmentObject(vm)
+        } else {
+            EmptyCalendarView(selectedDate: selectedDate)
+        }
+    }
+}
+
+private struct ObservableCalendarView: View {
+    let calendarManager: CalendarManager
+    @Binding var selectedDate: Date
+    @EnvironmentObject var vm: BoringViewModel
+    @State private var events: [EventModel] = []
+    
+    var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading) {
@@ -214,40 +230,78 @@ struct CalendarView: View {
                 }
             }
 
-            if let calendarManager = CalendarManager.shared {
-                let filteredEvents = EventListView.filteredEvents(
-                    events: calendarManager.events
-                )
-                if filteredEvents.isEmpty {
-                    EmptyEventsView(selectedDate: selectedDate)
-                    Spacer(minLength: 0)
-                } else {
-                    EventListView(events: calendarManager.events)
-                }
-            } else {
+            let filteredEvents = EventListView.filteredEvents(events: events)
+            if filteredEvents.isEmpty {
                 EmptyEventsView(selectedDate: selectedDate)
                 Spacer(minLength: 0)
+            } else {
+                EventListView(events: events)
             }
         }
         .listRowBackground(Color.clear)
         .frame(height: 120)
-        .onChange(of: selectedDate) {
+        .onReceive(calendarManager.$events) { newEvents in
+            events = newEvents
+        }
+        .onChange(of: selectedDate) { _, newDate in
             Task {
-                await CalendarManager.shared?.updateCurrentDate(selectedDate)
+                await calendarManager.updateCurrentDate(newDate)
             }
         }
         .onChange(of: vm.notchState) { _, _ in
             Task {
-                await CalendarManager.shared?.updateCurrentDate(Date.now)
+                await calendarManager.updateCurrentDate(Date.now)
                 selectedDate = Date.now
             }
         }
         .onAppear {
+            events = calendarManager.events
             Task {
-                await CalendarManager.shared?.updateCurrentDate(Date.now)
+                await calendarManager.updateCurrentDate(Date.now)
                 selectedDate = Date.now
             }
         }
+    }
+}
+
+private struct EmptyCalendarView: View {
+    let selectedDate: Date
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading) {
+                    Text(selectedDate.formatted(.dateTime.month(.abbreviated)))
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                    Text(selectedDate.formatted(.dateTime.year()))
+                        .font(.title3)
+                        .fontWeight(.light)
+                        .foregroundColor(Color(white: 0.65))
+                }
+                
+                ZStack(alignment: .top) {
+                    WheelPicker(selectedDate: .constant(selectedDate), config: Config())
+                    HStack(alignment: .top) {
+                        LinearGradient(
+                            colors: [Color.black, .clear], startPoint: .leading, endPoint: .trailing
+                        )
+                        .frame(width: 20)
+                        Spacer()
+                        LinearGradient(
+                            colors: [.clear, Color.black], startPoint: .leading, endPoint: .trailing
+                        )
+                        .frame(width: 20)
+                    }
+                }
+            }
+            
+            EmptyEventsView(selectedDate: selectedDate)
+            Spacer(minLength: 0)
+        }
+        .listRowBackground(Color.clear)
+        .frame(height: 120)
     }
 }
 
