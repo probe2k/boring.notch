@@ -182,7 +182,6 @@ struct WheelPicker: View {
 
 struct CalendarView: View {
     @EnvironmentObject var vm: BoringViewModel
-    @ObservedObject private var calendarManager = CalendarManager.shared
     @State private var selectedDate = Date()
 
     var body: some View {
@@ -215,32 +214,37 @@ struct CalendarView: View {
                 }
             }
 
-            let filteredEvents = EventListView.filteredEvents(
-                events: calendarManager.events
-            )
-            if filteredEvents.isEmpty {
+            if let calendarManager = CalendarManager.shared {
+                let filteredEvents = EventListView.filteredEvents(
+                    events: calendarManager.events
+                )
+                if filteredEvents.isEmpty {
+                    EmptyEventsView(selectedDate: selectedDate)
+                    Spacer(minLength: 0)
+                } else {
+                    EventListView(events: calendarManager.events)
+                }
+            } else {
                 EmptyEventsView(selectedDate: selectedDate)
                 Spacer(minLength: 0)
-            } else {
-                EventListView(events: calendarManager.events)
             }
         }
         .listRowBackground(Color.clear)
         .frame(height: 120)
         .onChange(of: selectedDate) {
             Task {
-                await calendarManager.updateCurrentDate(selectedDate)
+                await CalendarManager.shared?.updateCurrentDate(selectedDate)
             }
         }
         .onChange(of: vm.notchState) { _, _ in
             Task {
-                await calendarManager.updateCurrentDate(Date.now)
+                await CalendarManager.shared?.updateCurrentDate(Date.now)
                 selectedDate = Date.now
             }
         }
         .onAppear {
             Task {
-                await calendarManager.updateCurrentDate(Date.now)
+                await CalendarManager.shared?.updateCurrentDate(Date.now)
                 selectedDate = Date.now
             }
         }
@@ -267,7 +271,6 @@ struct EmptyEventsView: View {
 
 struct EventListView: View {
     @Environment(\.openURL) private var openURL
-    @ObservedObject private var calendarManager = CalendarManager.shared
     let events: [EventModel]
     @Default(.autoScrollToNextEvent) private var autoScrollToNextEvent
     @Default(.showFullEventTitles) private var showFullEventTitles

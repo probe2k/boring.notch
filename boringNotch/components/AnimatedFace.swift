@@ -50,7 +50,7 @@ struct MinimalFaceFeatures: View {
     }
     
     func startBlinking() {
-        blinkTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
             withAnimation(.spring(duration: 0.2)) {
                 isBlinking = true
             }
@@ -60,6 +60,8 @@ struct MinimalFaceFeatures: View {
                 }
             }
         }
+        timer.tolerance = 1.0 // Allow 1 second variance for power efficiency
+        blinkTimer = timer
     }
     
     func stopBlinking() {

@@ -630,7 +630,6 @@ struct Media: View {
 }
 
 struct CalendarSettings: View {
-    @ObservedObject private var calendarManager = CalendarManager.shared
     @Default(.showCalendar) var showCalendar: Bool
     @Default(.hideAllDayEvents) var hideAllDayEvents
     @Default(.autoScrollToNextEvent) var autoScrollToNextEvent
@@ -639,6 +638,13 @@ struct CalendarSettings: View {
         Form {
             Defaults.Toggle(key: .showCalendar) {
                 Text("Show calendar")
+            }
+            .onChange(of: showCalendar) { _, newValue in
+                if newValue {
+                    CalendarManager.initialize()
+                } else {
+                    CalendarManager.teardown()
+                }
             }
             Defaults.Toggle(key: .hideAllDayEvents) {
                 Text("Hide all-day events")
@@ -650,47 +656,59 @@ struct CalendarSettings: View {
                 Text("Always show full event titles")
             }
             Section(header: Text("Calendars")) {
-                if calendarManager.calendarAuthorizationStatus != .fullAccess {
-                    Text("Calendar access is denied. Please enable it in System Settings.")
-                        .foregroundColor(.red)
-                        .multilineTextAlignment(.center)
-                        .padding()
-                    Button("Open Calendar Settings") {
-                        if let settingsURL = URL(
-                            string:
-                                "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
-                        ) {
-                            NSWorkspace.shared.open(settingsURL)
+                if let calendarManager = CalendarManager.shared {
+                    if calendarManager.calendarAuthorizationStatus != .fullAccess {
+                        Text("Calendar access is denied. Please enable it in System Settings.")
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                            .padding()
+                        Button("Open Calendar Settings") {
+                            if let settingsURL = URL(
+                                string:
+                                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
+                            ) {
+                                NSWorkspace.shared.open(settingsURL)
+                            }
+                        }
+                    } else {
+                        List {
+                            ForEach(calendarManager.eventCalendars, id: \.id) { calendar in
+                                Toggle(
+                                    isOn: Binding(
+                                        get: { calendarManager.getCalendarSelected(calendar) },
+                                        set: { isSelected in
+                                            Task {
+                                                await calendarManager.setCalendarSelected(
+                                                    calendar, isSelected: isSelected)
+                                            }
+                                        }
+                                    )
+                                ) {
+                                    Text(calendar.title)
+                                }
+                                .accentColor(lighterColor(from: calendar.color))
+                                .disabled(!showCalendar)
+                            }
                         }
                     }
                 } else {
-                    List {
-                        ForEach(calendarManager.eventCalendars, id: \.id) { calendar in
-                            Toggle(
-                                isOn: Binding(
-                                    get: { calendarManager.getCalendarSelected(calendar) },
-                                    set: { isSelected in
-                                        Task {
-                                            await calendarManager.setCalendarSelected(
-                                                calendar, isSelected: isSelected)
-                                        }
-                                    }
-                                )
-                            ) {
-                                Text(calendar.title)
-                            }
-                            .accentColor(lighterColor(from: calendar.color))
-                            .disabled(!showCalendar)
-                        }
-                    }
+                    Text("Enable calendar to configure calendars")
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding()
                 }
             }
         }
         .accentColor(.effectiveAccent)
         .navigationTitle("Calendar")
         .onAppear {
-            Task {
-                await calendarManager.checkCalendarAuthorization()
+            if showCalendar {
+                CalendarManager.initialize()
+                if let calendarManager = CalendarManager.shared {
+                    Task {
+                        await calendarManager.checkCalendarAuthorization()
+                    }
+                }
             }
         }
     }

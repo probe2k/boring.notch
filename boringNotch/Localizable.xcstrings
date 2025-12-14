@@ -8331,6 +8331,9 @@
         }
       }
     },
+    "Enable calendar to configure calendars" : {
+
+    },
     "Enable colored spectrograms" : {
       "extractionState" : "stale",
       "localizations" : {

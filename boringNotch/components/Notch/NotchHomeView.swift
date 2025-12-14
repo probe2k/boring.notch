@@ -400,6 +400,9 @@ struct NotchHomeView: View {
                     .onHover { isHovering in
                         vm.isHoveringCalendar = isHovering
                     }
+                    .onAppear {
+                        CalendarManager.initialize()
+                    }
                     .environmentObject(vm)
                     .transition(.opacity)
             }

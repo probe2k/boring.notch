@@ -13,7 +13,17 @@ import SwiftUI
 
 @MainActor
 class CalendarManager: ObservableObject {
-    static let shared = CalendarManager()
+    private(set) static var shared: CalendarManager?
+    
+    static func initialize() {
+        guard Defaults[.showCalendar] else { return }
+        guard shared == nil else { return }
+        shared = CalendarManager()
+    }
+    
+    static func teardown() {
+        shared = nil
+    }
 
     @Published var currentWeekStartDate: Date
     @Published var events: [EventModel] = []
@@ -46,7 +56,7 @@ class CalendarManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task {
+            Task(priority: .utility) {
                 await self?.reloadCalendars()
             }
         }

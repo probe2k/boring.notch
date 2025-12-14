@@ -28,6 +28,11 @@ final class DragDetector {
     private var isDragging: Bool = false
     private var isContentDragging: Bool = false
     private var hasEnteredNotchRegion: Bool = false
+    
+    // Throttling to reduce CPU usage
+    private var lastProcessedTime: TimeInterval = 0
+    private let throttleInterval: TimeInterval = 0.06 // ~16 times per second max
+    private var cachedHasValidContent: Bool = false
 
     private let notchRegion: CGRect
     private let dragPasteboard = NSPasteboard(name: .drag)
@@ -58,18 +63,32 @@ final class DragDetector {
             self.isDragging = true
             self.isContentDragging = false
             self.hasEnteredNotchRegion = false
+            self.cachedHasValidContent = false
+            self.lastProcessedTime = 0
         }
 
         // Track drag movement and notch region intersection
         mouseDraggedMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDragged]) { [weak self] event in
             guard let self = self else { return }
             guard self.isDragging else { return }
+            
+            // Throttle event processing to reduce CPU usage
+            let currentTime = Date().timeIntervalSince1970
+            let timeSinceLastProcess = currentTime - self.lastProcessedTime
+            
+            // Only process every throttleInterval seconds (~16 times/sec instead of 60+)
+            guard timeSinceLastProcess >= self.throttleInterval else { return }
+            self.lastProcessedTime = currentTime
 
             let newContent = self.dragPasteboard.changeCount != self.pasteboardChangeCount
             
             // Detect if actual content is being dragged AND it's valid content
-            if newContent && !self.isContentDragging && self.hasValidDragContent() {
-                self.isContentDragging = true
+            // Cache the validation result to avoid repeated pasteboard checks
+            if newContent && !self.isContentDragging {
+                self.cachedHasValidContent = self.hasValidDragContent()
+                if self.cachedHasValidContent {
+                    self.isContentDragging = true
+                }
             }
 
             // Only process position when content is being dragged
@@ -97,6 +116,8 @@ final class DragDetector {
             self.isContentDragging = false
             self.hasEnteredNotchRegion = false
             self.pasteboardChangeCount = -1
+            self.cachedHasValidContent = false
+            self.lastProcessedTime = 0
         }
     }
 
