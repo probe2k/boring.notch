@@ -517,10 +517,6 @@ struct HUD: View {
                 Defaults.Toggle(key: .showOpenNotchHUD) {
                     Text("Show HUD in open notch")
                 }
-                Defaults.Toggle(key: .showOpenNotchHUDPercentage) {
-                    Text("Show percentage")
-                }
-                .disabled(!Defaults[.showOpenNotchHUD])
             } header: {
                 HStack {
                     Text("Open Notch")
@@ -543,10 +539,6 @@ struct HUD: View {
                             Defaults[.enableGradient] = false
                         }
                     }
-                }
-                
-                Defaults.Toggle(key: .showClosedNotchHUDPercentage) {
-                    Text("Show percentage")
                 }
             } header: {
                 Text("Closed Notch")
