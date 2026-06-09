@@ -10,11 +10,16 @@ final class XPCHelperClient: NSObject {
     private var remoteService: RemoteXPCService<BoringNotchXPCHelperProtocol>?
     private var connection: NSXPCConnection?
     private var lastKnownAuthorization: Bool?
-    private var monitoringTask: Task<Void, Never>?
-    
+
+    // Notification-driven monitoring state (accessed on the main actor).
+    private var monitoringActive = false
+    private var distributedObserver: NSObjectProtocol?
+    private var activationObserver: NSObjectProtocol?
+
     deinit {
         connection?.invalidate()
-        stopMonitoringAccessibilityAuthorization()
+        // Observers are MainActor-owned; singleton never deinits in practice,
+        // so we don't try to remove them here (would require an awaitable hop).
     }
     
     // MARK: - Connection Management (Main Actor Isolated)
@@ -70,29 +75,83 @@ final class XPCHelperClient: NSObject {
     }
 
     // MARK: - Monitoring
+    //
+    // The previous implementation polled the helper every 3s, which woke the
+    // app, the helper, and tccd at a steady cadence and showed up as "High"
+    // energy impact on the helper even at 0% CPU (Activity Monitor's EI score
+    // is dominated by wake-up rate, not CPU). macOS already broadcasts a
+    // distributed notification (`com.apple.accessibility.api`) every time the
+    // user toggles accessibility permissions in System Settings, so the right
+    // shape is purely event-driven.
+    //
+    // The `every:` parameter is retained for source compatibility but ignored.
+
     nonisolated func startMonitoringAccessibilityAuthorization(every interval: TimeInterval = 3.0) {
-        // Ensure only one monitor exists
-        stopMonitoringAccessibilityAuthorization()
-        monitoringTask = Task.detached { [weak self] in
-            guard let self = self else { return }
-            while !Task.isCancelled {
-                // Call the helper method periodically which will notify on change
-                _ = await self.isAccessibilityAuthorized()
-                do {
-                    try await Task.sleep(for: .seconds(interval))
-                } catch { break }
-            }
+        _ = interval
+        Task { @MainActor [weak self] in
+            self?.installAccessibilityObserversIfNeeded()
         }
     }
 
     nonisolated func stopMonitoringAccessibilityAuthorization() {
-        monitoringTask?.cancel()
-        monitoringTask = nil
+        Task { @MainActor [weak self] in
+            self?.removeAccessibilityObservers()
+        }
+    }
+
+    @MainActor
+    private func installAccessibilityObserversIfNeeded() {
+        guard !monitoringActive else { return }
+        monitoringActive = true
+
+        distributedObserver = DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.accessibility.api"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshAccessibilityAuthorization()
+        }
+
+        // The distributed notification can arrive while we're inactive and
+        // may be coalesced; double-check on app activation so the UI never
+        // shows stale state after the user returns from System Settings.
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshAccessibilityAuthorization()
+        }
+
+        refreshAccessibilityAuthorization()
+    }
+
+    @MainActor
+    private func removeAccessibilityObservers() {
+        guard monitoringActive else { return }
+        monitoringActive = false
+
+        if let observer = distributedObserver {
+            DistributedNotificationCenter.default().removeObserver(observer)
+            distributedObserver = nil
+        }
+        if let observer = activationObserver {
+            NotificationCenter.default.removeObserver(observer)
+            activationObserver = nil
+        }
+    }
+
+    @MainActor
+    private func refreshAccessibilityAuthorization() {
+        Task { [weak self] in
+            _ = await self?.isAccessibilityAuthorized()
+        }
     }
 
     // Expose whether the client is actively monitoring (useful for tests/debug)
+    @MainActor
     var isMonitoring: Bool {
-        return monitoringTask != nil
+        monitoringActive
     }
     
     // MARK: - Accessibility
