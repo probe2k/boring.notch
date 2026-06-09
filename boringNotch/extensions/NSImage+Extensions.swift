@@ -13,6 +13,10 @@ import CoreImage
 import CoreGraphics
 import CoreImage.CIFilterBuiltins
 
+// Shared CIContext: instantiation is expensive (sets up the Metal pipeline),
+// so reuse a single one across all averageColor / getBrightness calls.
+private let sharedCIContext = CIContext(options: nil)
+
 extension NSImage {
 
     
@@ -24,50 +28,33 @@ extension NSImage {
                 }
                 return
             }
-            
-            let width = cgImage.width
-            let height = cgImage.height
-            let totalPixels = width * height
-            
-            guard let context = CGContext(data: nil,
-                                          width: width,
-                                          height: height,
-                                          bitsPerComponent: 8,
-                                          bytesPerRow: width * 4,
-                                          space: CGColorSpaceCreateDeviceRGB(),
-                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+
+            let inputImage = CIImage(cgImage: cgImage)
+            let filter = CIFilter.areaAverage()
+            filter.inputImage = inputImage
+            filter.extent = inputImage.extent
+
+            guard let outputImage = filter.outputImage else {
                 DispatchQueue.main.async {
                     completion(nil)
                 }
                 return
             }
-            
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-            
-            guard let data = context.data else {
-                DispatchQueue.main.async {
-                    completion(nil)
-                }
-                return
-            }
-            
-            let pointer = data.bindMemory(to: UInt32.self, capacity: totalPixels)
-            
-            var totalRed: UInt64 = 0
-            var totalGreen: UInt64 = 0
-            var totalBlue: UInt64 = 0
-            
-            for i in 0..<totalPixels {
-                let color = pointer[i]
-                totalRed += UInt64(color & 0xFF)
-                totalGreen += UInt64((color >> 8) & 0xFF)
-                totalBlue += UInt64((color >> 16) & 0xFF)
-            }
-            
-            let averageRed = CGFloat(totalRed) / CGFloat(totalPixels) / 255.0
-            let averageGreen = CGFloat(totalGreen) / CGFloat(totalPixels) / 255.0
-            let averageBlue = CGFloat(totalBlue) / CGFloat(totalPixels) / 255.0
-            
+
+            var bitmap = [UInt8](repeating: 0, count: 4)
+            sharedCIContext.render(outputImage,
+                                   toBitmap: &bitmap,
+                                   rowBytes: 4,
+                                   bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+                                   format: .RGBA8,
+                                   colorSpace: CGColorSpaceCreateDeviceRGB())
+
+            let averageRed = CGFloat(bitmap[0]) / 255.0
+            let averageGreen = CGFloat(bitmap[1]) / 255.0
+            let averageBlue = CGFloat(bitmap[2]) / 255.0
+
+            // minBrightness lifts dim album art into a still-perceptible range
+            // for tinting downstream UI without washing out the original hue.
             let minBrightness: CGFloat = 0.5
             let isNearBlack = averageRed < 0.03 && averageGreen < 0.03 && averageBlue < 0.03
             

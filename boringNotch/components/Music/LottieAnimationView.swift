@@ -9,10 +9,12 @@ import SwiftUI
 import Defaults
 
 struct LottieAnimationContainer: View {
+    private static let defaultVisualizerURL: URL = URL(string: "https://assets9.lottiefiles.com/packages/lf20_mniampqn.json")!
+
     @Default(.selectedVisualizer) var selectedVisualizer
     var body: some View {
         if selectedVisualizer == nil {
-            LottieView(url: URL(string: "https://assets9.lottiefiles.com/packages/lf20_mniampqn.json")!, speed: 1.0, loopMode: .loop)
+            LottieView(url: Self.defaultVisualizerURL, speed: 1.0, loopMode: .loop)
         } else {
             LottieView(url: selectedVisualizer!.url, speed: selectedVisualizer!.speed, loopMode: .loop)
         }

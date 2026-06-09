@@ -61,6 +61,20 @@ class MusicManager: ObservableObject {
     @Published var isTransitioning: Bool = false
     private var transitionWorkItem: DispatchWorkItem?
 
+    // Memoize avg color by track identity so revisiting recent tracks skips
+    // the GPU pass entirely. countLimit kept small — we only care about the
+    // last few tracks the user actually cycles between.
+    private let avgColorCache: NSCache<NSString, NSColor> = {
+        let cache = NSCache<NSString, NSColor>()
+        cache.countLimit = 8
+        return cache
+    }()
+
+    // Cached mirror of Defaults[.coloredSpectrogram] so we don't hit
+    // UserDefaults on every artwork emission. Kept in sync via the publisher
+    // wired up in init().
+    private var coloredSpectrogramEnabled: Bool = Defaults[.coloredSpectrogram]
+
     // MARK: - Initialization
     init() {
         // Directly initialize Now Playing controller
@@ -77,7 +91,14 @@ class MusicManager: ObservableObject {
                 self.updateFromPlaybackState(state)
             }
             .store(in: &controllerCancellables)
-        
+
+        Defaults.publisher(.coloredSpectrogram)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in
+                self?.coloredSpectrogramEnabled = change.newValue
+            }
+            .store(in: &cancellables)
+
         // Update volume control support
         self.volumeControlSupported = controller.supportsVolumeControl
         self.canFavoriteTrack = controller.supportsFavorite
@@ -300,7 +321,7 @@ class MusicManager: ObservableObject {
         workItem?.cancel()
         withAnimation(.smooth) {
             self.albumArt = newAlbumArt
-            if Defaults[.coloredSpectrogram] {
+            if coloredSpectrogramEnabled {
                 self.calculateAverageColor()
             }
         }
@@ -322,10 +343,21 @@ class MusicManager: ObservableObject {
     }
 
     func calculateAverageColor() {
+        let cacheKey = "\(songTitle)|\(artistName)|\(album)" as NSString
+        if let cached = avgColorCache.object(forKey: cacheKey) {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                self.avgColor = cached
+            }
+            return
+        }
         albumArt.averageColor { [weak self] color in
             DispatchQueue.main.async {
-                withAnimation(.smooth) {
-                    self?.avgColor = color ?? .white
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    let resolved = color ?? .white
+                    if let color = color {
+                        self?.avgColorCache.setObject(color, forKey: cacheKey)
+                    }
+                    self?.avgColor = resolved
                 }
             }
         }
