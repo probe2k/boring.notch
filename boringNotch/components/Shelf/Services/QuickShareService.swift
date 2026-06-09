@@ -51,7 +51,13 @@ class QuickShareService: ObservableObject {
 
         for svc in services {
             let title = svc.title
-            let imgData = svc.image.tiffRepresentation
+            // `NSSharingService.image` is non‑optional, but for some system
+            // services it's a freshly‑allocated NSImage with zero
+            // representations and a zero size. Calling `tiffRepresentation`
+            // on such an image makes AppKit log a noisy pair of stderr
+            // messages per call ("CGImageDestinationCreateWithData: invalid
+            // capacity (0)" / "no images added") and return nil anyway.
+            let imgData = Self.encode(image: svc.image)
             let supportsRawText = svc.canPerform(withItems: ["Test Text"])
             let provider = QuickShareProvider(id: title, imageData: imgData, supportsRawText: supportsRawText)
             if !providers.contains(provider) {
@@ -72,7 +78,18 @@ class QuickShareService: ObservableObject {
         self.availableProviders = providers
 
     }
-    
+
+    /// Returns a TIFF representation of `image`, or `nil` if the image has no
+    /// drawable content. Used instead of calling `tiffRepresentation` directly
+    /// because AppKit prints a noisy pair of CoreGraphics error messages to
+    /// stderr whenever it's asked to serialize an empty NSImage.
+    private static func encode(image: NSImage) -> Data? {
+        let size = image.size
+        guard size.width > 0, size.height > 0 else { return nil }
+        guard !image.representations.isEmpty else { return nil }
+        return image.tiffRepresentation
+    }
+
     // MARK: - File Picker
     @MainActor
     func showFilePicker(for provider: QuickShareProvider, from view: NSView?) async {

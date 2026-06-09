@@ -6,6 +6,20 @@
 	<true/>
 	<key>com.apple.security.automation.apple-events</key>
 	<true/>
+	<!--
+	  Required so that ad-hoc / local builds can load the bundled third-party
+	  MediaRemoteAdapter.framework. With Hardened Runtime + App Sandbox the
+	  loader normally requires the host process and any embedded framework to
+	  share the same Team ID; two distinct ad-hoc signatures don't satisfy
+	  that check (the "team identity" of an ad-hoc signature is its own
+	  cdhash), which is what triggers the "different Team IDs" dyld error in
+	  Release builds. Once the app is signed with a real Developer ID this
+	  entitlement still works but is no longer strictly required, because the
+	  CodeSignOnCopy step will re-sign MediaRemoteAdapter.framework with the
+	  app's Team ID.
+	-->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
 	<key>com.apple.security.device.camera</key>
 	<true/>
 	<key>com.apple.security.personal-information.calendars</key>

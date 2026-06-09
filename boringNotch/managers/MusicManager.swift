@@ -126,9 +126,13 @@ class MusicManager: ObservableObject {
         let albumChanged = state.album != self.lastArtworkAlbum
         let bundleChanged = state.bundleIdentifier != self.lastArtworkBundleIdentifier
 
-        // Check for artwork changes
+        // Check for artwork changes. `state.artwork` may legitimately be nil in
+        // a diff event that simply doesn't carry artwork — we treat that as
+        // "unchanged" rather than "removed" now that NowPlayingController
+        // preserves the previous artwork across diffs.
         let artworkChanged = state.artwork != nil && state.artwork != self.artworkData
-        let hasContentChange = titleChanged || artistChanged || albumChanged || artworkChanged || bundleChanged
+        let trackIdentityChanged = titleChanged || artistChanged || albumChanged || bundleChanged
+        let hasContentChange = trackIdentityChanged || artworkChanged
 
         // Handle artwork and visual transitions for changed content
         if hasContentChange {
@@ -136,17 +140,23 @@ class MusicManager: ObservableObject {
 
             if artworkChanged, let artwork = state.artwork {
                 self.updateArtwork(artwork)
-            } else if state.artwork == nil {
-                // Try to use app icon if no artwork but track changed
+            } else if state.artwork == nil && self.artworkData == nil && trackIdentityChanged {
+                // Track changed and we genuinely have no artwork for it — fall
+                // back to the source app's icon. (Previously this branch fired
+                // on every metadata diff because the controller used to drop
+                // artwork from diff payloads, causing repeated flicker between
+                // the real album art and the app icon.)
                 if let appIconImage = AppIconAsNSImage(for: state.bundleIdentifier) {
                     self.usingAppIconForArtwork = true
                     self.updateAlbumArt(newAlbumArt: appIconImage)
                 }
             }
-            self.artworkData = state.artwork
 
-            if artworkChanged || state.artwork == nil {
-                // Update last artwork change values
+            if artworkChanged {
+                self.artworkData = state.artwork
+            }
+
+            if artworkChanged || (state.artwork == nil && trackIdentityChanged) {
                 self.lastArtworkTitle = state.title
                 self.lastArtworkArtist = state.artist
                 self.lastArtworkAlbum = state.album
@@ -157,18 +167,8 @@ class MusicManager: ObservableObject {
             if !state.title.isEmpty && !state.artist.isEmpty && state.isPlaying {
                 self.updateSneakPeek()
             }
-
-            // Fetch lyrics on content change
-
         }
 
-        let timeChanged = state.currentTime != self.elapsedTime
-        let durationChanged = state.duration != self.songDuration
-        let playbackRateChanged = state.playbackRate != self.playbackRate
-        let shuffleChanged = state.isShuffled != self.isShuffled
-        let repeatModeChanged = state.repeatMode != self.repeatMode
-        let volumeChanged = state.volume != self.volume
-        
         if state.title != self.songTitle {
             self.songTitle = state.title
         }
@@ -181,19 +181,19 @@ class MusicManager: ObservableObject {
             self.album = state.album
         }
 
-        if timeChanged {
+        if state.currentTime != self.elapsedTime {
             self.elapsedTime = state.currentTime
         }
 
-        if durationChanged {
+        if state.duration != self.songDuration {
             self.songDuration = state.duration
         }
 
-        if playbackRateChanged {
+        if state.playbackRate != self.playbackRate {
             self.playbackRate = state.playbackRate
         }
-        
-        if shuffleChanged {
+
+        if state.isShuffled != self.isShuffled {
             self.isShuffled = state.isShuffled
         }
 
@@ -203,18 +203,26 @@ class MusicManager: ObservableObject {
             self.volumeControlSupported = activeController?.supportsVolumeControl ?? false
         }
 
-        if repeatModeChanged {
+        if state.repeatMode != self.repeatMode {
             self.repeatMode = state.repeatMode
         }
+
         if state.isFavorite != self.isFavoriteTrack {
             self.isFavoriteTrack = state.isFavorite
         }
-        
-        if volumeChanged {
+
+        if state.volume != self.volume {
             self.volume = state.volume
         }
-        
-        self.timestampDate = state.lastUpdated
+
+        // Only republish the timestamp when it actually advances. Previously
+        // this was assigned on every event regardless, which by itself caused a
+        // SwiftUI redraw cascade on every MediaRemote notification — multiple
+        // times per second for some players — and dominated this app's idle
+        // CPU/battery footprint.
+        if state.lastUpdated != self.timestampDate {
+            self.timestampDate = state.lastUpdated
+        }
     }
 
     func toggleFavoriteTrack() {
@@ -300,11 +308,17 @@ class MusicManager: ObservableObject {
 
     // MARK: - Playback Position Estimation
     public func estimatedPlaybackPosition(at date: Date = Date()) -> TimeInterval {
-        guard isPlaying else { return min(elapsedTime, songDuration) }
-
-        let timeDifference = date.timeIntervalSince(timestampDate)
-        let estimated = elapsedTime + (timeDifference * playbackRate)
-        return min(max(0, estimated), songDuration)
+        let raw: TimeInterval
+        if isPlaying && playbackRate > 0 {
+            let timeDifference = max(0, date.timeIntervalSince(timestampDate))
+            raw = elapsedTime + (timeDifference * playbackRate)
+        } else {
+            raw = elapsedTime
+        }
+        if songDuration > 0 {
+            return min(max(0, raw), songDuration)
+        }
+        return max(0, raw)
     }
 
     func calculateAverageColor() {
@@ -415,7 +429,28 @@ class MusicManager: ObservableObject {
     }
 
     func forceUpdate() {
-        // Request immediate update from the active controller
+        // Re‑anchor the cached elapsed time to "now" so that any consumer that
+        // reads `elapsedTime` directly (rather than going through
+        // `estimatedPlaybackPosition`) sees a fresh value immediately —
+        // important when the notch is opened after a long idle period and no
+        // new stream events have arrived in the interim.
+        let now = Date()
+        if isPlaying && playbackRate > 0 {
+            let drift = max(0, now.timeIntervalSince(timestampDate)) * playbackRate
+            let estimated = elapsedTime + drift
+            let clamped = songDuration > 0 ? min(max(0, estimated), songDuration) : max(0, estimated)
+            if clamped != elapsedTime {
+                elapsedTime = clamped
+            }
+            if now != timestampDate {
+                timestampDate = now
+            }
+        }
+
+        // Refresh side‑channel state (e.g. favourite flag) from the active
+        // controller. The playback position itself is delivered continuously
+        // by the streaming MediaRemote pipe so there is no need to re‑request
+        // it here.
         Task { [weak self] in
             await self?.activeController?.updatePlaybackInfo()
         }

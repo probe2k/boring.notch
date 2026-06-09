@@ -69,6 +69,19 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     private var pipeHandler: JSONLinesPipeHandler?
     private var streamTask: Task<Void, Never>?
 
+    // Reused decoder/formatter — avoid per‑event allocations from the JSON stream
+    // hot path. ISO8601DateFormatter in particular is expensive to construct.
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let isoFormatterNoFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
     // MARK: - Initialization
     init?() {
         guard
@@ -198,7 +211,11 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         }
         
         process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        process.arguments = [scriptURL.path, frameworkPath, "stream"]
+        // `--debounce=200` coalesces bursts of MediaRemote notifications (Spotify
+        // in particular can fire many per second while a track is playing),
+        // dramatically reducing JSON parsing, Combine emissions and SwiftUI
+        // redraw work without any user‑visible latency.
+        process.arguments = [scriptURL.path, frameworkPath, "stream", "--debounce=200"]
         
         let pipeHandler = JSONLinesPipeHandler()
         process.standardOutput = await pipeHandler.getPipe()
@@ -229,43 +246,45 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     private func handleAdapterUpdate(_ update: NowPlayingUpdate) async {
         let payload = update.payload
         let diff = update.diff ?? false
+        let previous = self.playbackState
+        let now = Date()
 
-        var newPlaybackState = PlaybackState(bundleIdentifier: playbackState.bundleIdentifier)
-        
-        newPlaybackState.title = payload.title ?? (diff ? self.playbackState.title : "")
-        newPlaybackState.artist = payload.artist ?? (diff ? self.playbackState.artist : "")
-        newPlaybackState.album = payload.album ?? (diff ? self.playbackState.album : "")
-        newPlaybackState.duration = payload.duration ?? (diff ? self.playbackState.duration : 0)
-        
-        if let elapsedTime = payload.elapsedTime {
-            newPlaybackState.currentTime = elapsedTime
-        } else if diff {
-            if payload.playing == false {
-                let timeSinceLastUpdate = Date().timeIntervalSince(self.playbackState.lastUpdated)
-                newPlaybackState.currentTime = self.playbackState.currentTime + (self.playbackState.playbackRate * timeSinceLastUpdate)
-            } else {
-                newPlaybackState.currentTime = self.playbackState.currentTime
-            }
-        } else {
-            newPlaybackState.currentTime = 0
-        }
+        // For a full (non‑diff) update we start fresh; for a diff we carry the
+        // previous values forward and only override fields that the payload
+        // includes. This is the same semantic as before — but expressed in a
+        // single place so the currentTime / lastUpdated invariants are easy to
+        // reason about below.
+        var newPlaybackState = diff ? previous : PlaybackState(bundleIdentifier: previous.bundleIdentifier)
 
-        
+        newPlaybackState.title = payload.title ?? (diff ? previous.title : "")
+        newPlaybackState.artist = payload.artist ?? (diff ? previous.artist : "")
+        newPlaybackState.album = payload.album ?? (diff ? previous.album : "")
+        newPlaybackState.duration = payload.duration ?? (diff ? previous.duration : 0)
+        newPlaybackState.playbackRate = payload.playbackRate ?? (diff ? previous.playbackRate : 1.0)
+        newPlaybackState.isPlaying = payload.playing ?? (diff ? previous.isPlaying : false)
+        newPlaybackState.volume = payload.volume ?? (diff ? previous.volume : 0.5)
+        newPlaybackState.bundleIdentifier = (
+            payload.parentApplicationBundleIdentifier ??
+            payload.bundleIdentifier ??
+            (diff ? previous.bundleIdentifier : "")
+        )
+
         if let shuffleMode = payload.shuffleMode {
             newPlaybackState.isShuffled = shuffleMode != 1
         } else if !diff {
             newPlaybackState.isShuffled = false
-        } else {
-            newPlaybackState.isShuffled = self.playbackState.isShuffled
         }
+
         if let repeatModeValue = payload.repeatMode {
             newPlaybackState.repeatMode = RepeatMode(rawValue: repeatModeValue) ?? .off
         } else if !diff {
             newPlaybackState.repeatMode = .off
-        } else {
-            newPlaybackState.repeatMode = self.playbackState.repeatMode
         }
 
+        // Artwork: in diff mode the payload only includes artworkData when it
+        // actually changes. Previously we replaced the field with nil whenever
+        // it was absent which caused the UI to fall back to the app icon on
+        // every metadata update.
         if let artworkDataString = payload.artworkData {
             newPlaybackState.artwork = Data(
                 base64Encoded: artworkDataString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -274,29 +293,61 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
             newPlaybackState.artwork = nil
         }
 
-        if let dateString = payload.timestamp,
-           let date = ISO8601DateFormatter().date(from: dateString) {
-            newPlaybackState.lastUpdated = date
-        } else if !diff {
-            newPlaybackState.lastUpdated = Date()
+        // --- currentTime / lastUpdated ---
+        //
+        // The invariant we want downstream (estimatedPlaybackPosition) to be
+        // able to rely on is: `currentTime` is the playback head at the
+        // instant of `lastUpdated`. Whenever we synthesize one of these two
+        // values we MUST update the other so the pair stays consistent.
+        //
+        // The previous implementation extrapolated `currentTime` for diff
+        // events that lacked an elapsed time, but then kept the stale
+        // `lastUpdated` from the previous event. After a pause/resume the
+        // slider's extrapolation (currentTime + (now − lastUpdated) × rate)
+        // therefore double‑counted the time that had already elapsed before
+        // the diff, and the seek position would jump forward by tens of
+        // seconds (or whole minutes) every time playback resumed.
+        let payloadTimestamp: Date? = payload.timestamp.flatMap(Self.parseTimestamp(_:))
+
+        if let elapsedTime = payload.elapsedTime {
+            newPlaybackState.currentTime = elapsedTime
+            newPlaybackState.lastUpdated = payloadTimestamp ?? now
+        } else if diff {
+            // No fresh elapsed time. Roll the playback head forward to "now"
+            // only if the previous state was playing; if it was paused, the
+            // stored elapsed time is still authoritative. In both cases we
+            // re‑anchor lastUpdated to "now" so that any future extrapolation
+            // starts from this point and cannot grow unbounded.
+            if previous.isPlaying {
+                let advance = max(0, now.timeIntervalSince(previous.lastUpdated)) * previous.playbackRate
+                let estimated = previous.currentTime + advance
+                if previous.duration > 0 {
+                    newPlaybackState.currentTime = min(max(0, estimated), previous.duration)
+                } else {
+                    newPlaybackState.currentTime = max(0, estimated)
+                }
+            } else {
+                newPlaybackState.currentTime = previous.currentTime
+            }
+            newPlaybackState.lastUpdated = payloadTimestamp ?? now
         } else {
-            newPlaybackState.lastUpdated = self.playbackState.lastUpdated
+            newPlaybackState.currentTime = 0
+            newPlaybackState.lastUpdated = payloadTimestamp ?? now
         }
 
-        newPlaybackState.playbackRate = payload.playbackRate ?? (diff ? self.playbackState.playbackRate : 1.0)
-        newPlaybackState.isPlaying = payload.playing ?? (diff ? self.playbackState.isPlaying : false)
-        newPlaybackState.bundleIdentifier = (
-            payload.parentApplicationBundleIdentifier ??
-            payload.bundleIdentifier ??
-            (diff ? self.playbackState.bundleIdentifier : "")
-        )
-        
-        newPlaybackState.volume = payload.volume ?? (diff ? self.playbackState.volume : 0.5)
-        
-        self.playbackState = newPlaybackState
-        
-        // Fetch favorite state for supported apps asynchronously
-        // await fetchFavoriteStateIfSupported()
+        // Skip publishing if nothing meaningful changed. PlaybackState's
+        // Equatable conformance intentionally ignores lastUpdated / playbackRate
+        // / volume so that drift in any of those alone doesn't cascade into a
+        // full SwiftUI redraw — extrapolation downstream still produces the
+        // same visible result.
+        if newPlaybackState != previous {
+            self.playbackState = newPlaybackState
+        }
+    }
+
+    private static func parseTimestamp(_ string: String) -> Date? {
+        if let date = isoFormatter.date(from: string) { return date }
+        return isoFormatterNoFractional.date(from: string)
     }
     
      private func fetchFavoriteStateIfSupported() async {
@@ -351,7 +402,8 @@ actor JSONLinesPipeHandler {
     private let pipe: Pipe
     private let fileHandle: FileHandle
     private var buffer = ""
-    
+    private let decoder = JSONDecoder()
+
     init() {
         self.pipe = Pipe()
         self.fileHandle = pipe.fileHandleForReading
@@ -396,7 +448,7 @@ actor JSONLinesPipeHandler {
             return
         }
         do {
-            let decodedObject = try JSONDecoder().decode(T.self, from: data)
+            let decodedObject = try decoder.decode(T.self, from: data)
             await onLine(decodedObject)
         } catch {
             // Ignore lines that can't be decoded

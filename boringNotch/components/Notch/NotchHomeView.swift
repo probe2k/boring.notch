@@ -19,7 +19,12 @@ struct MusicPlayerView: View {
     var body: some View {
         HStack {
             AlbumArtView(vm: vm, albumArtNamespace: albumArtNamespace).padding(.all, 5)
-            MusicControlsView().drawingGroup().compositingGroup()
+            // NOTE: do not wrap this in `.drawingGroup()`. The controls update
+            // multiple times per second (TimelineView ticks for the seekbar)
+            // and drawingGroup forces a full off‑screen Metal rasterization on
+            // every redraw, which was a major battery drain whenever the notch
+            // was open with music playing.
+            MusicControlsView().compositingGroup()
         }
     }
 }
@@ -156,7 +161,14 @@ struct MusicControlsView: View {
     }
 
     private var musicSlider: some View {
-        TimelineView(.animation(minimumInterval: musicManager.playbackRate > 0 ? 0.2 : nil)) { timeline in
+        // Only tick the timeline while the player is actively playing. When
+        // paused (or stopped) the position cannot drift, so there is no reason
+        // to keep waking SwiftUI up. While playing, half‑second updates are
+        // visually smooth enough for a seek bar whose text only renders
+        // seconds, while halving the per‑second SwiftUI work compared to the
+        // previous 5 Hz tick.
+        let shouldAnimate = musicManager.isPlaying && musicManager.playbackRate > 0
+        return TimelineView(.animation(minimumInterval: 0.5, paused: !shouldAnimate)) { timeline in
             MusicSliderView(
                 sliderValue: $sliderValue,
                 duration: $musicManager.songDuration,
@@ -430,7 +442,7 @@ struct MusicSliderView: View {
         VStack {
             CustomSlider(
                 value: $sliderValue,
-                range: 0...duration,
+                range: 0...max(duration, 0.0001),
                 color: Defaults[.sliderColor] == SliderColorEnum.albumArt
                     ? Color(nsColor: color).ensureMinimumBrightness(factor: 0.8)
                     : Defaults[.sliderColor] == SliderColorEnum.accent ? .effectiveAccent : .white,
@@ -452,9 +464,35 @@ struct MusicSliderView: View {
             )
             .font(.caption)
         }
-        .onChange(of: currentDate) {
-           guard !dragging, timestampDate.timeIntervalSince(lastDragged) > -1 else { return }
-            sliderValue = MusicManager.shared.estimatedPlaybackPosition(at: currentDate)
+        .onAppear { recomputeSlider(at: currentDate) }
+        .onChange(of: currentDate) { _, newValue in recomputeSlider(at: newValue) }
+        .onChange(of: elapsedTime) { _, _ in recomputeSlider(at: currentDate) }
+        .onChange(of: timestampDate) { _, _ in recomputeSlider(at: currentDate) }
+        .onChange(of: isPlaying) { _, _ in recomputeSlider(at: currentDate) }
+    }
+
+    private func recomputeSlider(at date: Date) {
+        // Don't fight the user's drag, and don't snap back immediately after
+        // they let go (`lastDragged` is touched on release).
+        guard !dragging, timestampDate.timeIntervalSince(lastDragged) > -1 else { return }
+
+        let estimated: Double
+        if isPlaying && playbackRate > 0 {
+            let drift = max(0, date.timeIntervalSince(timestampDate)) * playbackRate
+            estimated = elapsedTime + drift
+        } else {
+            estimated = elapsedTime
+        }
+
+        let clamped: Double
+        if duration > 0 {
+            clamped = min(max(0, estimated), duration)
+        } else {
+            clamped = max(0, estimated)
+        }
+
+        if clamped != sliderValue {
+            sliderValue = clamped
         }
     }
 

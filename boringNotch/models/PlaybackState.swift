@@ -31,6 +31,12 @@ struct PlaybackState {
 }
 
 extension PlaybackState: Equatable {
+    // NOTE: lastUpdated and playbackRate are intentionally excluded from
+    // equality. They drift on essentially every event from MediaRemote and
+    // including them would defeat the redundant‑update suppression that
+    // NowPlayingController relies on to keep CPU/battery usage down. The slider
+    // extrapolates from (currentTime, lastUpdated, playbackRate) anyway, so
+    // drift in those alone doesn't produce a visible change.
     static func == (lhs: PlaybackState, rhs: PlaybackState) -> Bool {
         return lhs.bundleIdentifier == rhs.bundleIdentifier
             && lhs.isPlaying == rhs.isPlaying
@@ -43,5 +49,6 @@ extension PlaybackState: Equatable {
             && lhs.repeatMode == rhs.repeatMode
             && lhs.artwork == rhs.artwork
             && lhs.isFavorite == rhs.isFavorite
+            && lhs.volume == rhs.volume
     }
 }
