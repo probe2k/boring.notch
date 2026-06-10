@@ -9,7 +9,15 @@ import SwiftUI
 import Defaults
 
 struct LottieAnimationContainer: View {
-    private static let defaultVisualizerURL: URL = URL(string: "https://assets9.lottiefiles.com/packages/lf20_mniampqn.json")!
+    // Prefer the JSON shipped inside the app bundle; fall back to the remote
+    // copy only if the resource is somehow missing (should never happen in a
+    // properly built release).
+    private static let defaultVisualizerURL: URL = {
+        if let bundled = Bundle.main.url(forResource: "default_visualizer", withExtension: "json") {
+            return bundled
+        }
+        return URL(string: "https://assets9.lottiefiles.com/packages/lf20_mniampqn.json")!
+    }()
 
     @Default(.selectedVisualizer) var selectedVisualizer
     var body: some View {
