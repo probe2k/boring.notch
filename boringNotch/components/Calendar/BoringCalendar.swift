@@ -19,12 +19,20 @@ struct Config: Equatable {
 }
 
 struct WheelPicker: View {
+    /// Origin of a `selectedDate` change. Parent views use this to decide
+    /// whether the dependent work (e.g. an EventKit refetch) should fire
+    /// immediately or be debounced until the user settles.
+    enum DateChangeSource { case tap, scroll }
+
     @EnvironmentObject var vm: BoringViewModel
     @Binding var selectedDate: Date
     @State private var scrollPosition: Int?
     @State private var haptics: Bool = false
     @State private var byClick: Bool = false
     let config: Config
+    /// Optional notification of a real user-driven date change. Only fires
+    /// when the selected day actually changes (not on programmatic re-centering).
+    var onDateChange: ((Date, DateChangeSource) -> Void)? = nil
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -42,10 +50,14 @@ struct WheelPicker: View {
                         let date = dateForItemIndex(index: index, spacerNum: spacerNum)
                         let isSelected = Calendar.current.isDate(date, inSameDayAs: selectedDate)
                         dateButton(date: date, isSelected: isSelected, id: index) {
+                            let dayChanged = !Calendar.current.isDate(date, inSameDayAs: selectedDate)
                             selectedDate = date
                             byClick = true
                             withAnimation {
                                 scrollPosition = index
+                            }
+                            if dayChanged {
+                                onDateChange?(date, .tap)
                             }
                             // Haptic feedback disabled
                             // if Defaults[.enableHaptics] {
@@ -133,6 +145,7 @@ struct WheelPicker: View {
         let date = dateForItemIndex(index: newIndex, spacerNum: spacerNum)
         if !Calendar.current.isDate(date, inSameDayAs: selectedDate) {
             selectedDate = date
+            onDateChange?(date, .scroll)
             // Haptic feedback disabled
             // if Defaults[.enableHaptics] {
             //     haptics.toggle()
@@ -173,10 +186,18 @@ struct WheelPicker: View {
         return Int(ceil(Double(range) / Double(step))) + 1
     }
 
+    // Cached once. SwiftUI re-rendered ~22 day cells per scroll frame; a
+    // fresh DateFormatter per cell was the second-largest cost during
+    // calendar scroll. Reading from a DateFormatter without mutating it is
+    // thread-safe on macOS 10.9+ (per Apple's NSDateFormatter docs).
+    private static let weekdayShortFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "E"
+        return f
+    }()
+
     private func dateToString(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "E"
-        return formatter.string(from: date)
+        Self.weekdayShortFormatter.string(from: date)
     }
 }
 
@@ -199,7 +220,15 @@ private struct ObservableCalendarView: View {
     @Binding var selectedDate: Date
     @EnvironmentObject var vm: BoringViewModel
     @State private var events: [EventModel] = []
-    
+    /// Single in-flight fetch handle. Each new tap/scroll cancels the
+    /// previous attempt so we never accumulate stale EventKit work.
+    @State private var pendingFetch: Task<Void, Never>? = nil
+
+    /// Delay applied to scroll-driven changes so a rapid flick coalesces
+    /// into one EventKit query at the settled day instead of one per snap.
+    /// Below the threshold of perception once the scroll stops.
+    private static let scrollDebounceNanoseconds: UInt64 = 250_000_000
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 8) {
@@ -215,7 +244,13 @@ private struct ObservableCalendarView: View {
                 }
 
                 ZStack(alignment: .top) {
-                    WheelPicker(selectedDate: $selectedDate, config: Config())
+                    WheelPicker(
+                        selectedDate: $selectedDate,
+                        config: Config(),
+                        onDateChange: { date, source in
+                            scheduleEventFetch(for: date, source: source)
+                        }
+                    )
                     HStack(alignment: .top) {
                         LinearGradient(
                             colors: [Color.black, .clear], startPoint: .leading, endPoint: .trailing
@@ -243,23 +278,43 @@ private struct ObservableCalendarView: View {
         .onReceive(calendarManager.$events) { newEvents in
             events = newEvents
         }
-        .onChange(of: selectedDate) { _, newDate in
-            Task {
-                await calendarManager.updateCurrentDate(newDate)
-            }
-        }
         .onChange(of: vm.notchState) { _, _ in
-            Task {
+            // Notch reopen → snap back to today and refresh immediately.
+            pendingFetch?.cancel()
+            pendingFetch = Task {
                 await calendarManager.updateCurrentDate(Date.now)
-                selectedDate = Date.now
+                if !Task.isCancelled {
+                    selectedDate = Date.now
+                }
             }
         }
         .onAppear {
             events = calendarManager.events
-            Task {
+            pendingFetch?.cancel()
+            pendingFetch = Task {
                 await calendarManager.updateCurrentDate(Date.now)
-                selectedDate = Date.now
+                if !Task.isCancelled {
+                    selectedDate = Date.now
+                }
             }
+        }
+        .onDisappear {
+            pendingFetch?.cancel()
+        }
+    }
+
+    /// Cancels any pending fetch and schedules a new one. Tap-driven changes
+    /// fire immediately so the events list updates without perceptible lag.
+    /// Scroll-driven changes are debounced so a rapid flick across many days
+    /// produces only one EventKit query at the settled day.
+    private func scheduleEventFetch(for date: Date, source: WheelPicker.DateChangeSource) {
+        pendingFetch?.cancel()
+        pendingFetch = Task {
+            if source == .scroll {
+                try? await Task.sleep(nanoseconds: Self.scrollDebounceNanoseconds)
+                if Task.isCancelled { return }
+            }
+            await calendarManager.updateCurrentDate(date)
         }
     }
 }

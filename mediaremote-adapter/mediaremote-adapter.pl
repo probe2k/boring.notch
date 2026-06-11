@@ -259,6 +259,52 @@ my $symbol = DynaLoader::dl_find_symbol($handle, "$symbol_name")
   or fail "Symbol '$symbol_name' not found in $framework";
 DynaLoader::dl_install_xsub("main::$function_name", $symbol);
 
+# -----------------------------------------------------------------------------
+# Parent-death watchdog (only for the long-running "stream" command).
+#
+# Once we call into the C `adapter_stream_*` entry below, the Perl interpreter
+# is blocked inside the framework's CFRunLoop for the entire stream lifetime
+# and cannot poll, select, or run signal handlers. If the parent app
+# (boringNotch) dies — crash, force-quit, Xcode "Stop", SIGKILL — macOS
+# reparents this Perl process to launchd (PID 1) and it keeps streaming
+# MediaRemote events that nobody is reading, indefinitely.
+#
+# We delegate the watching to a tiny C helper, `pdwatch`, that lives in the
+# app bundle next to this script. It uses kqueue(EVFILT_PROC | NOTE_EXIT) to
+# block event-driven inside the kernel until the host (or this Perl process)
+# exits — zero polling, zero idle CPU/wakes while waiting. When the host
+# dies first, pdwatch sends SIGTERM to this Perl interpreter, then SIGKILL
+# after a 1-second grace period. When this Perl exits first (clean
+# teardown from the host), pdwatch just exits.
+#
+# Fork or exec failure here is non-fatal: we skip the watchdog and rely on
+# the host's own teardown path for cleanup. This also makes the script
+# work fine in test/CLI scenarios where `pdwatch` isn't installed.
+# -----------------------------------------------------------------------------
+if ($function_name eq "stream") {
+  my $host_pid = getppid();   # boringNotch process PID
+  my $perl_pid = $$;          # our own PID
+  if ($host_pid > 1) {
+    my $script_dir = File::Basename::dirname(File::Spec->rel2abs(__FILE__));
+    my $pdwatch    = File::Spec->catfile($script_dir, "pdwatch");
+    if (-x $pdwatch) {
+      my $child = fork();
+      if (defined $child && $child == 0) {
+        # In the watchdog child. Detach STD streams so we don't keep the
+        # host's pipes alive, then exec into pdwatch — it never returns
+        # from kevent() until one of the PIDs exits.
+        $0 = "mediaremote-adapter watchdog";
+        open(STDIN,  '<', '/dev/null');
+        open(STDOUT, '>', '/dev/null');
+        open(STDERR, '>', '/dev/null');
+        exec($pdwatch, $host_pid, $perl_pid);
+        exit 1;   # exec failure
+      }
+      # Parent (this Perl) falls through into the blocking stream call.
+    }
+  }
+}
+
 eval {
   no strict "refs";
   &{"main::$function_name"}();

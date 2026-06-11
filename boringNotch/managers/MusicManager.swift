@@ -119,7 +119,12 @@ class MusicManager: ObservableObject {
         flipWorkItem?.cancel()
         transitionWorkItem?.cancel()
 
-        // Release active controller
+        // Explicit, synchronous teardown of the controller's background
+        // resources (e.g. the mediaremote-adapter Perl helper). Relying
+        // on deinit alone leaked the helper as a launchd-reparented
+        // zombie whenever any other strong reference outlived us, which
+        // was every "Restart Boring Notch" and every Xcode-stop click.
+        activeController?.teardown()
         activeController = nil
     }
 

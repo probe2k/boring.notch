@@ -26,6 +26,7 @@
 		111BEA612ED09B1B0079DD4E /* NSScreen+UUID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111BEA602ED09B1B0079DD4E /* NSScreen+UUID.swift */; };
 		111BEA6F2ED166E20079DD4E /* MacroVisionKit in Frameworks */ = {isa = PBXBuildFile; productRef = 111BEA6E2ED166E20079DD4E /* MacroVisionKit */; };
 		112B0EB92E30DD0F00562D6C /* mediaremote-adapter.pl in Resources */ = {isa = PBXBuildFile; fileRef = 112B0EB32E30DD0F00562D6C /* mediaremote-adapter.pl */; };
+		11D0F11700000000DEFB0001 /* pdwatch in Resources */ = {isa = PBXBuildFile; fileRef = 11D0F11700000000DEFB0002 /* pdwatch */; };
 		112B0EBB2E30DD5000562D6C /* MediaRemoteAdapter.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 112B0EBA2E30DD5000562D6C /* MediaRemoteAdapter.framework */; };
 		112FB7352CCF16F70015238C /* NotchSpaceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 112FB7342CCF16F70015238C /* NotchSpaceManager.swift */; };
 		1153BD8F2D986B1F00979FB0 /* MediaControllerProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1153BD8D2D986B1F00979FB0 /* MediaControllerProtocol.swift */; };
@@ -185,6 +186,7 @@
 		111BE9942ECF2DEF0079DD4E /* DragDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DragDetector.swift; sourceTree = "<group>"; };
 		111BEA602ED09B1B0079DD4E /* NSScreen+UUID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSScreen+UUID.swift"; sourceTree = "<group>"; };
 		112B0EB32E30DD0F00562D6C /* mediaremote-adapter.pl */ = {isa = PBXFileReference; lastKnownFileType = text.script.perl; path = "mediaremote-adapter.pl"; sourceTree = "<group>"; };
+		11D0F11700000000DEFB0002 /* pdwatch */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; path = pdwatch; sourceTree = "<group>"; };
 		112B0EBA2E30DD5000562D6C /* MediaRemoteAdapter.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MediaRemoteAdapter.framework; path = "mediaremote-adapter/MediaRemoteAdapter.framework"; sourceTree = "<group>"; };
 		112FB7342CCF16F70015238C /* NotchSpaceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchSpaceManager.swift; sourceTree = "<group>"; };
 		1153BD8D2D986B1F00979FB0 /* MediaControllerProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaControllerProtocol.swift; sourceTree = "<group>"; };
@@ -385,6 +387,7 @@
 			isa = PBXGroup;
 			children = (
 				112B0EB32E30DD0F00562D6C /* mediaremote-adapter.pl */,
+				11D0F11700000000DEFB0002 /* pdwatch */,
 			);
 			path = "mediaremote-adapter";
 			sourceTree = "<group>";
@@ -852,6 +855,7 @@
 				14CEF41D2C5CAED400855D72 /* Preview Assets.xcassets in Resources */,
 				14CEF41A2C5CAED400855D72 /* Assets.xcassets in Resources */,
 				112B0EB92E30DD0F00562D6C /* mediaremote-adapter.pl in Resources */,
+				11D0F11700000000DEFB0001 /* pdwatch in Resources */,
 				B17266E12C6532560031BA0D /* Localizable.xcstrings in Resources */,
 				14A7E5972C65FD31008C1BE9 /* boring.m4a in Resources */,
 				11D0F11700000000DEFA0002 /* default_visualizer.json in Resources */,

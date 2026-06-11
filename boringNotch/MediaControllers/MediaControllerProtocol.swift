@@ -26,4 +26,17 @@ protocol MediaControllerProtocol: ObservableObject {
     func setVolume(_ level: Double) async
     func isActive() -> Bool
     func updatePlaybackInfo() async
+
+    /// Synchronously stop all background work owned by this controller —
+    /// timers, Tasks, helper processes, file handles, etc. Must complete
+    /// promptly (well under one second) because callers run during
+    /// `applicationWillTerminate`, where the system gives the app ~5s
+    /// before SIGKILL. Idempotent and safe to call multiple times.
+    func teardown()
+}
+
+extension MediaControllerProtocol {
+    /// Default no-op so controllers without background resources don't
+    /// have to implement anything.
+    func teardown() {}
 }

@@ -113,22 +113,53 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     }
 
     deinit {
+        // Funnel through the same teardown path the app delegate uses so
+        // there is exactly one place that knows how to kill the Perl
+        // helper. Safe to call from deinit because teardown is sync.
+        teardown()
+    }
+
+    /// Synchronously stop the JSON stream and kill the bundled
+    /// `mediaremote-adapter.pl` Perl helper.
+    ///
+    /// Relying on `deinit` alone leaked the child as a launchd-reparented
+    /// zombie whenever Combine subscriptions or in-flight Tasks held the
+    /// controller past app termination — which is exactly what happened
+    /// during normal "Restart Boring Notch" / Xcode-stop / force-quit
+    /// flows. Called from `MusicManager.destroy()` (which runs in
+    /// `applicationWillTerminate`), and also from `deinit` as a safety net.
+    ///
+    /// Idempotent.
+    func teardown() {
         streamTask?.cancel()
-        
-        if let pipeHandler = self.pipeHandler {
-            Task { await pipeHandler.close()
+        streamTask = nil
+
+        // The pipe handler's `close()` is async; we don't await it. The
+        // underlying file descriptors close as soon as the FileHandle is
+        // released, which is all we need at termination time. The async
+        // bookkeeping inside the handler is best-effort.
+        pipeHandler = nil
+
+        guard let process = self.process else { return }
+        self.process = nil
+
+        if process.isRunning {
+            // Graceful: SIGTERM. The Perl helper's main loop polls a
+            // CFRunLoop inside the framework; under normal load it
+            // notices and exits within tens of milliseconds.
+            process.terminate()
+            let deadline = Date().addingTimeInterval(0.5)
+            while process.isRunning, Date() < deadline {
+                usleep(20_000) // 20 ms
             }
-        }
-        
-        if let process = self.process {
+            // Forceful: SIGKILL. If we get here the child ignored
+            // SIGTERM, is wedged in a syscall, or simply slow. Either
+            // way we cannot afford to leak it.
             if process.isRunning {
-                process.terminate()
+                kill(process.processIdentifier, SIGKILL)
                 process.waitUntilExit()
             }
         }
-
-        self.process = nil
-        self.pipeHandler = nil
     }
 
     // MARK: - Protocol Implementation
